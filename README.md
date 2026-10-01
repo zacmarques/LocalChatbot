@@ -18,7 +18,7 @@ Uma interface sólida com chatbot de IA desenvolvido em Python que permite inter
 
 - **Linguagem:** Python
 - **Execução de IA Local:** [Ollama](https://ollama.com/)
-- **Bibliotecas Python:** `openai` / `ollama` / `streamlit`**
+- **Bibliotecas Python:** `openai` / `ollama` / `streamlit`
 
 ---
 
