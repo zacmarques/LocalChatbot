@@ -5,9 +5,13 @@
 # Paleta de cores: olive-leaf, black-forest, cornsilk, sunlit-clay, copperwood
 # =============================================================================
 
+import os
 import streamlit as st
 from openai import OpenAI
+from dotenv import load_dotenv
 import time
+
+load_dotenv()
 
 # ━━ PALETA DE CORES ━━
 OLIVE_LEAF = "#606C38"
@@ -22,6 +26,16 @@ st.set_page_config(
     page_icon="📚",
     layout="centered",
     initial_sidebar_state="expanded"
+)
+
+#- INICIALIZAÇÃO DE VAR DE AMBIENTE / CLIENTE -
+
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "ollama")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1")
+
+modelo_ia = OpenAI(
+    base_url=OLLAMA_BASE_URL,
+    api_key=OLLAMA_API_KEY
 )
 
 # ━━ CSS PERSONALIZADO ━━
@@ -122,11 +136,11 @@ st.markdown(f"""
 
 # ━━ INICIALIZAÇÃO ━━
 modelo_ia = OpenAI(
-    base_url="http://127.0.0.1:11434/v1",
-    api_key="ollama"  # Ollama não requer API key
+    base_url=OLLAMA_BASE_URL,
+    api_key=OLLAMA_API_KEY
 )
 
-# ━━ LADO ESQUERDO (Informações) ━━
+# ━━ BARRA LATERAL (Informações) ━━
 with st.sidebar:
     st.markdown(f"""
     ### 📚 Informações sobre o criador
@@ -178,46 +192,52 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ━━ HISTÓRICO DE CONVERSA ━━
-if not "lista_mensagens" in st.session_state:
+if "lista_mensagens" not in st.session_state:
     st.session_state["lista_mensagens"] = []
 
 for mensagem in st.session_state["lista_mensagens"]:
-    if mensagem["role"] == "user":
-        st.chat_message("user").write(mensagem["content"])
-    else:
-        st.chat_message("assistant").write(mensagem["content"])
+    with st.chat_message(mensagem["role"]):
+        st.write(mensagem["content"])
 
 # ━━ CAMPO DE MENSAGEM ━━
 mensagem_usuario = st.chat_input("Digite sua mensagem aqui...")
 
-# ━━ PROCESSAMENTO ━━
 if mensagem_usuario:
-    # Adiciona mensagem do usuário
-    st.chat_message("user").write(mensagem_usuario)
-    st.session_state["lista_mensagens"].append({"role": "user", "content": mensagem_usuario})
+    # 1. Tratamento e validação de input
+    mensagem_limpa = mensagem_usuario.strip()
     
-    # Mensagem de "digitando..."
-    with st.chat_message("assistant"):
-        st.markdown("📝 *Digitando...*")
-    
-    # Integração com Ollama
-    try:
-        resposta_ia = modelo_ia.chat.completions.create(
-            model="qwen2.5:7b",
-            messages=st.session_state["lista_mensagens"],
-            max_tokens=4080,
-            extra_body={
-                "temperature": 0.5,
-                "options": {
-                    "num_ctx": 8192,
-                    "seed": 42
-                }
-            }
-        )
-        resposta_ia = resposta_ia.choices[0].message.content
-    except Exception as e:
-        resposta_ia = f"*Erro na conexão com Ollama:* {str(e)}"
-        st.error("⚠️ Verifique se o Ollama está rodando em http://127.0.0.1:11434")
+    if len(mensagem_limpa) > 2000:
+        st.warning("⚠️ Sua mensagem excede o limite de 2000 caracteres. Por favor, reduza o texto.")
+    elif len(mensagem_limpa) == 0:
+        st.warning("⚠️ Mensagem inválida.")
+    else:
+        # Adiciona e exibe mensagem do usuário
+        st.chat_message("user").write(mensagem_limpa)
+        st.session_state["lista_mensagens"].append({"role": "user", "content": mensagem_limpa})
+        
+        with st.chat_message("assistant"):
+            with st.spinner("Pensando..."):
+                try:
+                    resposta_ia_raw = modelo_ia.chat.completions.create(
+                        model="qwen2.5:7b",
+                        messages=st.session_state["lista_mensagens"],
+                        max_tokens=4080,
+                        extra_body={
+                            "temperature": 0.5,
+                            "options": {
+                                "num_ctx": 8192,
+                                "seed": 42
+                            }
+                        }
+                    )
+                    resposta_ia = resposta_ia_raw.choices[0].message.content
+                    st.write(resposta_ia)
+                    st.session_state["lista_mensagens"].append({"role": "assistant", "content": resposta_ia})
+                
+                except Exception as e:
+                    # Oculta detalhes do erro do usuário final e registra no console local
+                    print(f"[ERRO OLLAMA]: {e}")
+                    st.error("⚠️ Ocorreu um erro ao conectar com o serviço de IA local. Certifique-se de que o Ollama está em execução.")
     
     # Adiciona mensagem da IA
     st.session_state["lista_mensagens"].append({"role": "assistant", "content": resposta_ia})
